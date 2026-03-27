@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>IDM Data Lifecycle & Contract Renewal Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e2d45;
+    --accent: #0078d4;
+    --accent2: #00c6ff;
+    --green: #00d68f;
+    --amber: #f5a623;
+    --red: #ff4d6a;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,120,212,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,120,212,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; }
+
+  /* TOP NAV */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: 52px;
+    background: rgba(17,24,39,0.95);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .logo-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--accent2);
+    background: rgba(0,198,255,0.08);
+    border: 1px solid rgba(0,198,255,0.2);
+    padding: 4px 10px;
+    border-radius: 4px;
+  }
+  .topbar-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+  .topbar-right { display: flex; align-items: center; gap: 20px; }
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--green);
+  }
+  .live-dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+  .clock { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  /* NAV TABS */
+  .nav-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 12px 28px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tab {
+    padding: 8px 18px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    border-radius: 4px 4px 0 0;
+    letter-spacing: 0.02em;
+  }
+  .tab:hover { color: var(--text); background: var(--surface2); }
+  .tab.active { color: var(--accent2); border-bottom-color: var(--accent2); background: var(--surface2); }
+
+  /* MAIN LAYOUT */
+  .main { padding: 24px 28px; }
+
+  /* SECTION HEADERS */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* KPI CARDS */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .kpi-card:hover { border-color: var(--accent); }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .kpi-card.blue::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .kpi-card.green::before { background: var(--green); }
+  .kpi-card.amber::before { background: var(--amber); }
+  .kpi-card.red::before { background: var(--red); }
+  .kpi-card.purple::before { background: #a78bfa; }
+  .kpi-label { font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
+  .kpi-value { font-family: var(--mono); font-size: 28px; font-weight: 600; line-height: 1; margin-bottom: 4px; }
+  .kpi-sub { font-size: 10px; color: var(--muted); }
+  .kpi-delta { font-size: 10px; font-weight: 600; }
+  .kpi-delta.up { color: var(--green); }
+  .kpi-delta.down { color: var(--red); }
+
+  /* MAIN GRID */
+  .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-half { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+  /* CARD */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-title { font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0.03em; }
+  .card-badge {
+    font-family: var(--mono); font-size: 9px; font-weight: 600;
+    padding: 3px 8px; border-radius: 3px; letter-spacing: 0.06em;
+  }
+  .card-badge.green { background: rgba(0,214,143,0.12); color: var(--green); border: 1px solid rgba(0,214,143,0.2); }
+  .card-badge.amber { background: rgba(245,166,35,0.12); color: var(--amber); border: 1px solid rgba(245,166,35,0.2); }
+  .card-badge.red { background: rgba(255,77,106,0.12); color: var(--red); border: 1px solid rgba(255,77,106,0.2); }
+  .card-badge.blue { background: rgba(0,120,212,0.12); color: var(--accent2); border: 1px solid rgba(0,120,212,0.3); }
+  .card-body { padding: 16px 18px; }
+
+  /* TABLE */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th {
+    font-family: var(--mono); font-size: 9px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+  }
+  .data-table td {
+    padding: 10px 12px; font-size: 12px; color: var(--text);
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(0,120,212,0.04); }
+  .data-table td.mono { font-family: var(--mono); font-size: 11px; }
+
+  /* RAG BADGE */
+  .rag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 3px 8px; border-radius: 3px;
+  }
+  .rag-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .rag.R { background: rgba(255,77,106,0.12); color: var(--red); border: 1px solid rgba(255,77,106,0.25); }
+  .rag.R .rag-dot { background: var(--red); }
+  .rag.A { background: rgba(245,166,35,0.12); color: var(--amber); border: 1px solid rgba(245,166,35,0.25); }
+  .rag.A .rag-dot { background: var(--amber); }
+  .rag.G { background: rgba(0,214,143,0.12); color: var(--green); border: 1px solid rgba(0,214,143,0.25); }
+  .rag.G .rag-dot { background: var(--green); }
+
+  /* PROGRESS BAR */
+  .progress-row { margin-bottom: 12px; }
+  .progress-row:last-child { margin-bottom: 0; }
+  .progress-label { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 11px; }
+  .progress-label span:first-child { color: var(--text); font-weight: 500; }
+  .progress-label span:last-child { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 2px; transition: width 1.5s cubic-bezier(0.4,0,0.2,1); }
+
+  /* TIMELINE */
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .timeline-item {
+    display: flex; gap: 14px; padding: 10px 0;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    align-items: flex-start;
+  }
+  .timeline-item:last-child { border-bottom: none; }
+  .tl-dot-wrap { display: flex; flex-direction: column; align-items: center; padding-top: 3px; }
+  .tl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tl-line { width: 1px; flex: 1; background: var(--border); margin-top: 4px; min-height: 20px; }
+  .tl-content { flex: 1; }
+  .tl-title { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .tl-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* MINI STAT */
+  .mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mini-stat {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+  }
+  .mini-stat-val { font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--text); }
+  .mini-stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* SUPPLIER TABLE */
+  .supplier-card { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(30,45,69,0.5); }
+  .supplier-card:last-child { border-bottom: none; }
+  .supplier-icon {
+    width: 32px; height: 32px; border-radius: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--accent2);
+    flex-shrink: 0;
+  }
+  .supplier-info { flex: 1; }
+  .supplier-name { font-size: 12px; font-weight: 500; color: var(--text); }
+  .supplier-type { font-size: 10px; color: var(--muted); }
+  .supplier-right { text-align: right; }
+  .supplier-renewal { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* ACTION TRACKER */
+  .action-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid rgba(30,45,69,0.5);
+  }
+  .action-item:last-child { border-bottom: none; }
+  .action-check {
+    width: 14px; height: 14px; border-radius: 3px;
+    border: 1.5px solid var(--border); flex-shrink: 0;
+    margin-top: 1px; cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .action-check.done { background: var(--green); border-color: var(--green); }
+  .action-check.done::after { content: '✓'; font-size: 9px; color: #000; font-weight: 700; }
+  .action-text { flex: 1; font-size: 12px; color: var(--text); }
+  .action-owner { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .action-due { font-family: var(--mono); font-size: 10px; flex-shrink: 0; margin-top: 1px; }
+
+  /* PROCESS TEMPLATES */
+  .template-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .template-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .template-card:hover { border-color: var(--accent); }
+  .template-icon { font-size: 18px; margin-bottom: 6px; }
+  .template-name { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .template-desc { font-size: 10px; color: var(--muted); line-height: 1.4; }
+
+  /* FILTER ROW */
+  .filter-row { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .filter-btn {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 5px 12px; border-radius: 4px; cursor: pointer;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); transition: all 0.15s; letter-spacing: 0.05em;
+  }
+  .filter-btn:hover, .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .filter-search {
+    margin-left: auto;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--mono); font-size: 11px;
+    padding: 5px 12px; border-radius: 4px; outline: none; width: 200px;
+  }
+  .filter-search:focus { border-color: var(--accent); }
+  .filter-search::placeholder { color: var(--muted); }
+
+  /* CHART CONTAINER */
+  .chart-wrap { position: relative; }
+  canvas { max-height: 180px; }
+
+  /* TOOLTIP */
+  .tip {
+    position: absolute; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 12px; font-size: 11px; pointer-events: none;
+    display: none; z-index: 200; white-space: nowrap;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  /* FADE IN */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .kpi-card, .card { animation: fadeUp 0.4s ease both; }
+  .kpi-card:nth-child(1) { animation-delay: 0.05s; }
+  .kpi-card:nth-child(2) { animation-delay: 0.1s; }
+  .kpi-card:nth-child(3) { animation-delay: 0.15s; }
+  .kpi-card:nth-child(4) { animation-delay: 0.2s; }
+  .kpi-card:nth-child(5) { animation-delay: 0.25s; }
+
+  /* PAGE VIEWS */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .scrollable { max-height: 340px; overflow-y: auto; }
+  .scrollable::-webkit-scrollbar { width: 3px; }
+  .scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .chart-wrap canvas { width: 100% !important; }
+
+  /* ONBOARDING PIPELINE */
+  .pipeline {
+    display: flex; gap: 0; overflow-x: auto;
+  }
+  .pipeline-stage {
+    flex: 1; min-width: 120px;
+    border-right: 1px solid var(--border);
+    padding: 12px 10px;
+  }
+  .pipeline-stage:last-child { border-right: none; }
+  .stage-name { font-family: var(--mono); font-size: 9px; font-weight: 600; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; }
+  .stage-count { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .stage-items { display: flex; flex-direction: column; gap: 5px; }
+  .stage-item {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 8px;
+    font-size: 10px; color: var(--text);
+    border-left: 2px solid;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo-pill">SAP IDM CoE</div>
+    <div class="topbar-title">Third-Party Data Lifecycle &amp; Contract Renewal Tracker</div>
+  </div>
+  <div class="topbar-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</div>
+
+<!-- NAV TABS -->
+<div class="nav-tabs">
+  <div class="tab active" onclick="switchTab('overview')">Overview</div>
+  <div class="tab" onclick="switchTab('contracts')">Contract Renewals</div>
+  <div class="tab" onclick="switchTab('onboarding')">Onboarding Pipeline</div>
+  <div class="tab" onclick="switchTab('governance')">Governance &amp; Compliance</div>
+  <div class="tab" onclick="switchTab('actions')">Action Tracker</div>
+  <div class="tab" onclick="switchTab('templates')">Process Templates</div>
+</div>
+
+<div class="main">
+
+<!-- ==================== OVERVIEW ==================== -->
+<div class="view active" id="view-overview">
+
+  <!-- KPI STRIP -->
+  <div class="section-label">Key Performance Indicators</div>
+  <div class="kpi-grid">
+    <div class="kpi-card blue">
+      <div class="kpi-label">Total Data Products</div>
+      <div class="kpi-value" style="color:var(--accent2)">54</div>
+      <div class="kpi-sub">Across 4 business units</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Renewal Risk Reduced</div>
+      <div class="kpi-value" style="color:var(--red)">40%</div>
+      <div class="kpi-sub"><span class="kpi-delta up">↑ vs. baseline</span></div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">On-Time Renewals</div>
+      <div class="kpi-value" style="color:var(--green)">91%</div>
+      <div class="kpi-sub">48 of 54 contracts</div>
+    </div>
+    <div class="kpi-card amber">
+      <div class="kpi-label">Provisioning Speed</div>
+      <div class="kpi-value" style="color:var(--amber)">35%</div>
+      <div class="kpi-sub">Faster onboarding</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">Compliance Entries</div>
+      <div class="kpi-value" style="color:#a78bfa">1,247</div>
+      <div class="kpi-sub">Data governance records</div>
+    </div>
+  </div>
+
+  <!-- ROW 1 -->
+  <div class="grid-2">
+
+    <!-- CONTRACT TIMELINE CHART -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Contract Renewal Timeline — Next 12 Months</div>
+        <div class="card-badge blue">LIVE</div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="renewalChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- RAG SUMMARY -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">RAG Status — Data Products</div>
+        <div class="card-badge green">54 TOTAL</div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap" style="height:150px;display:flex;align-items:center;justify-content:center;">
+          <canvas id="ragDonut" style="max-height:150px;max-width:150px;"></canvas>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:12px;justify-content:center;">
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--green)"><div style="width:8px;height:8px;background:var(--green);border-radius:2px;"></div> Green — 38</div>
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--amber)"><div style="width:8px;height:8px;background:var(--amber);border-radius:2px;"></div> Amber — 11</div>
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--red)"><div style="width:8px;height:8px;background:var(--red);border-radius:2px;"></div> Red — 5</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2 -->
+  <div class="grid-3">
+
+    <!-- PROVISIONING WORKFLOW -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Onboarding Stage Completion</div>
+      </div>
+      <div class="card-body">
+        <div class="progress-row">
+          <div class="progress-label"><span>Data Product Request</span><span>18/18</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:100%;background:var(--green)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Legal Review</span><span>15/18</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:83%;background:var(--accent2)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Data Protection Sign-off</span><span>13/18</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:72%;background:var(--accent)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Finance Approval</span><span>11/18</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:61%;background:var(--amber)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Provisioning Complete</span><span>9/18</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:50%;background:var(--red)"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BU BREAKDOWN -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Products by Business Unit</div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="buChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- SPEND BY SUPPLIER -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Contract Value by Category (€K)</div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="spendChart"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /overview -->
+
+
+<!-- ==================== CONTRACTS ==================== -->
+<div class="view" id="view-contracts">
+  <div class="filter-row">
+    <button class="filter-btn active" onclick="filterContracts('all', this)">ALL</button>
+    <button class="filter-btn" onclick="filterContracts('R', this)">🔴 RED</button>
+    <button class="filter-btn" onclick="filterContracts('A', this)">🟡 AMBER</button>
+    <button class="filter-btn" onclick="filterContracts('G', this)">🟢 GREEN</button>
+    <input class="filter-search" placeholder="Search supplier or product…" oninput="searchContracts(this.value)" />
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Third-Party Data Products — Contract Registry</div>
+      <div class="card-badge blue">54 PRODUCTS</div>
+    </div>
+    <div class="scrollable">
+      <table class="data-table" id="contractTable">
+        <thead>
+          <tr>
+            <th>Product ID</th>
+            <th>Data Product</th>
+            <th>Supplier</th>
+            <th>Business Unit</th>
+            <th>Contract Value</th>
+            <th>Renewal Date</th>
+            <th>Days Left</th>
+            <th>Status</th>
+            <th>Owner</th>
+          </tr>
+        </thead>
+        <tbody id="contractBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ONBOARDING ==================== -->
+<div class="view" id="view-onboarding">
+  <div class="grid-half" style="margin-bottom:16px;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Active Onboarding Pipeline</div>
+        <div class="card-badge amber">18 IN FLIGHT</div>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="pipeline" id="pipelineView"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Provisioning Cycle Time (Days)</div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="cycleChart"></canvas></div>
+        <div style="margin-top:12px;display:flex;gap:12px;">
+          <div class="mini-stat">
+            <div class="mini-stat-val" style="color:var(--green)">11.2</div>
+            <div class="mini-stat-label">Avg days (now)</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-val" style="color:var(--muted)">17.3</div>
+            <div class="mini-stat-label">Avg days (baseline)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Onboarding Activity Log</div>
+    </div>
+    <div class="card-body scrollable" style="max-height:280px;">
+      <div class="timeline" id="onboardingTimeline"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== GOVERNANCE ==================== -->
+<div class="view" id="view-governance">
+  <div class="grid-2" style="margin-bottom:16px;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Compliance Status — 1,247 Data Entries</div>
+        <div class="card-badge green">MONITORED</div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="complianceChart"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Department Compliance Score</div>
+      </div>
+      <div class="card-body">
+        <div class="progress-row" style="margin-bottom:14px;">
+          <div class="progress-label"><span>Procurement</span><span style="color:var(--green)">96%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:96%;background:var(--green)"></div></div>
+        </div>
+        <div class="progress-row" style="margin-bottom:14px;">
+          <div class="progress-label"><span>Legal</span><span style="color:var(--green)">89%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:89%;background:var(--accent2)"></div></div>
+        </div>
+        <div class="progress-row" style="margin-bottom:14px;">
+          <div class="progress-label"><span>Data Protection</span><span style="color:var(--green)">84%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:84%;background:var(--accent)"></div></div>
+        </div>
+        <div class="progress-row" style="margin-bottom:14px;">
+          <div class="progress-label"><span>Finance</span><span style="color:var(--amber)">71%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:71%;background:var(--amber)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Business Units</span><span style="color:var(--amber)">67%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:67%;background:var(--amber)"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Governance Entries — Full Registry</div>
+      <div class="card-badge blue">1,247 RECORDS</div>
+    </div>
+    <div class="scrollable">
+      <table class="data-table" id="govTable">
+        <thead>
+          <tr>
+            <th>Entry ID</th>
+            <th>Data Product</th>
+            <th>Dept</th>
+            <th>Data Protection</th>
+            <th>Legal Review</th>
+            <th>Renewal Alert</th>
+            <th>RAG</th>
+            <th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody id="govBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ACTIONS ==================== -->
+<div class="view" id="view-actions">
+  <div class="grid-half">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Open Action Items</div>
+        <div class="card-badge amber" id="openCount">LOADING</div>
+      </div>
+      <div class="card-body scrollable" id="actionList" style="max-height:400px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Completion Rate by Owner</div>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="ownerChart"></canvas></div>
+        <div style="margin-top:16px;">
+          <div class="mini-stats">
+            <div class="mini-stat">
+              <div class="mini-stat-val" style="color:var(--green)" id="doneCount">—</div>
+              <div class="mini-stat-label">Completed</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-val" style="color:var(--red)" id="pendingCount">—</div>
+              <div class="mini-stat-label">Outstanding</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TEMPLATES ==================== -->
+<div class="view" id="view-templates">
+  <div class="section-label">6 Reusable Process Templates</div>
+  <div class="template-grid" id="templateGrid"></div>
+  <div class="card" style="margin-top:16px;" id="templateDetail" style="display:none;">
+    <div class="card-header">
+      <div class="card-title" id="templateDetailTitle">Select a template above</div>
+    </div>
+    <div class="card-body" id="templateDetailBody">
+      <div style="color:var(--muted);font-size:12px;">Click any template card to preview its structure.</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// =================== CLOCK ===================
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('en-GB');
+}
+setInterval(updateClock, 1000); updateClock();
+
+// =================== TABS ===================
+function switchTab(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'governance') renderGovTable();
+  if (name === 'actions') renderActions();
+  if (name === 'onboarding') renderOnboarding();
+  if (name === 'templates') renderTemplates();
+}
+
+// =================== DATA ===================
+const suppliers = ['Dun & Bradstreet','Refinitiv','Bloomberg','S&P Global','Accenture Data','ZoomInfo','Moody\'s','Experian','LexisNexis','Nielsen'];
+const products = [
+  'Customer Master Data','Company Hierarchy Data','Financial Ratings Feed','ESG Scores Dataset','Market Intelligence API',
+  'Credit Risk Dataset','Contact Data Enrichment','Compliance Watchlist','Industry Classification Data','Supplier Risk Data',
+  'Geocoding & Address Data','News & Event Signals','Pricing Benchmark Data','Regulatory Filing Data','Patent Data Feed',
+  'Trade Activity Dataset','Entity Resolution API','People Data Cloud','Social Graph Data','Environmental Data Feed'
+];
+const bus = ['Finance & Risk','Sales & Marketing','Procurement','Corporate Strategy'];
+const owners = ['Sarah K.','James L.','Priya M.','Hans B.','Fatima A.'];
+
+function randInt(a, b) { return Math.floor(Math.random()*(b-a+1))+a; }
+function pick(arr) { return arr[randInt(0, arr.length-1)]; }
+function future(days) {
+  const d = new Date(); d.setDate(d.getDate()+days);
+  return d.toISOString().slice(0,10);
+}
+
+// Generate 54 contracts
+const contracts = Array.from({length:54}, (_,i) => {
+  const days = randInt(-30, 365);
+  const rag = days < 0 ? 'R' : days < 60 ? 'A' : 'G';
+  return {
+    id: 'DP-' + String(i+1).padStart(3,'0'),
+    product: products[i % products.length] + (i >= products.length ? ` v${Math.floor(i/products.length)+1}` : ''),
+    supplier: suppliers[i % suppliers.length],
+    bu: bus[i % bus.length],
+    value: '€' + randInt(15,280) + 'K',
+    renewal: future(days),
+    days,
+    rag,
+    owner: owners[i % owners.length]
+  };
+});
+
+let filteredContracts = [...contracts];
+
+function renderContractTable() {
+  const tbody = document.getElementById('contractBody');
+  tbody.innerHTML = filteredContracts.map(c => `
+    <tr>
+      <td class="mono" style="color:var(--muted)">${c.id}</td>
+      <td style="font-weight:500">${c.product}</td>
+      <td>${c.supplier}</td>
+      <td><span style="font-size:10px;background:var(--surface2);padding:2px 7px;border-radius:3px;border:1px solid var(--border)">${c.bu}</span></td>
+      <td class="mono">${c.value}</td>
+      <td class="mono">${c.renewal}</td>
+      <td class="mono" style="color:${c.days < 0 ? 'var(--red)' : c.days < 60 ? 'var(--amber)' : 'var(--green)'}">${c.days < 0 ? 'EXPIRED' : c.days + 'd'}</td>
+      <td><span class="rag ${c.rag}"><span class="rag-dot"></span>${c.rag === 'R' ? 'RED' : c.rag === 'A' ? 'AMBER' : 'GREEN'}</span></td>
+      <td style="color:var(--muted)">${c.owner}</td>
+    </tr>
+  `).join('');
+}
+
+function filterContracts(rag, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filteredContracts = rag === 'all' ? [...contracts] : contracts.filter(c => c.rag === rag);
+  renderContractTable();
+}
+
+function searchContracts(q) {
+  const lq = q.toLowerCase();
+  filteredContracts = contracts.filter(c =>
+    c.product.toLowerCase().includes(lq) || c.supplier.toLowerCase().includes(lq) || c.id.toLowerCase().includes(lq)
+  );
+  renderContractTable();
+}
+
+renderContractTable();
+
+// =================== GOVERNANCE TABLE ===================
+const govDepts = ['Procurement','Legal','Data Protection','Finance','Business Units'];
+const govStatuses = ['Approved','Pending','Under Review','Escalated'];
+
+const govEntries = Array.from({length:40}, (_,i) => {
+  const rag = i < 5 ? 'R' : i < 14 ? 'A' : 'G';
+  return {
+    id: 'GOV-' + String(i+1).padStart(4,'0'),
+    product: products[i % products.length],
+    dept: govDepts[i % govDepts.length],
+    dp: pick(govStatuses),
+    legal: pick(govStatuses),
+    alert: i < 8 ? '⚠ Expiring Soon' : '✓ OK',
+    rag,
+    updated: future(randInt(-30, 0))
+  };
+});
+
+function renderGovTable() {
+  document.getElementById('govBody').innerHTML = govEntries.map(g => `
+    <tr>
+      <td class="mono" style="color:var(--muted)">${g.id}</td>
+      <td style="font-weight:500">${g.product}</td>
+      <td><span style="font-size:10px">${g.dept}</span></td>
+      <td style="color:${g.dp==='Approved'?'var(--green)':g.dp==='Pending'?'var(--amber)':'var(--red)'};font-size:11px">${g.dp}</td>
+      <td style="color:${g.legal==='Approved'?'var(--green)':g.legal==='Pending'?'var(--amber)':'var(--red)'};font-size:11px">${g.legal}</td>
+      <td style="font-size:11px;color:${g.alert.includes('⚠')?'var(--amber)':'var(--green)'}">${g.alert}</td>
+      <td><span class="rag ${g.rag}"><span class="rag-dot"></span>${g.rag==='R'?'RED':g.rag==='A'?'AMBER':'GREEN'}</span></td>
+      <td class="mono" style="color:var(--muted)">${g.updated}</td>
+    </tr>
+  `).join('');
+}
+
+// =================== ACTIONS ===================
+const actionData = [
+  { text: 'Renew Dun & Bradstreet Customer Master Data contract', owner: 'Sarah K.', due: future(7), done: false, priority: 'R' },
+  { text: 'Chase Legal sign-off for Bloomberg Financial Ratings Feed', owner: 'James L.', due: future(3), done: false, priority: 'R' },
+  { text: 'Schedule supplier review call with Refinitiv', owner: 'Priya M.', due: future(10), done: true, priority: 'A' },
+  { text: 'Update provisioning tracker for S&P Global ESG Scores', owner: 'Hans B.', due: future(5), done: false, priority: 'A' },
+  { text: 'Send renewal reminder to ZoomInfo account manager', owner: 'Sarah K.', due: future(14), done: false, priority: 'A' },
+  { text: 'Complete Data Protection review for Nielsen data', owner: 'Fatima A.', due: future(2), done: false, priority: 'R' },
+  { text: 'Upload new contract for Experian Contact Enrichment', owner: 'James L.', due: future(20), done: true, priority: 'G' },
+  { text: 'Finance approval follow-up — Moody\'s Credit Risk feed', owner: 'Hans B.', due: future(8), done: false, priority: 'A' },
+  { text: 'Document onboarding workflow for LexisNexis Compliance Watchlist', owner: 'Priya M.', due: future(15), done: true, priority: 'G' },
+  { text: 'Coordinate cross-functional review meeting — Q2 renewals', owner: 'Sarah K.', due: future(12), done: false, priority: 'A' },
+];
+
+function renderActions() {
+  const done = actionData.filter(a => a.done).length;
+  document.getElementById('doneCount').textContent = done;
+  document.getElementById('pendingCount').textContent = actionData.length - done;
+  document.getElementById('openCount').textContent = (actionData.length - done) + ' OPEN';
+
+  document.getElementById('actionList').innerHTML = actionData.map((a, i) => `
+    <div class="action-item">
+      <div class="action-check ${a.done ? 'done' : ''}" onclick="toggleAction(${i})"></div>
+      <div style="flex:1;">
+        <div class="action-text" style="${a.done ? 'text-decoration:line-through;color:var(--muted)' : ''}">${a.text}</div>
+        <div class="action-owner">Owner: ${a.owner}</div>
+      </div>
+      <div class="action-due" style="color:${a.priority==='R'?'var(--red)':a.priority==='A'?'var(--amber)':'var(--green)'}">${a.due}</div>
+    </div>
+  `).join('');
+
+  renderOwnerChart();
+}
+
+function toggleAction(i) {
+  actionData[i].done = !actionData[i].done;
+  renderActions();
+}
+
+// =================== ONBOARDING ===================
+const stages = [
+  { name: 'REQUESTED', color: 'var(--muted)', items: ['ESG Scores v2','People Data Cloud','Geo API Premium'] },
+  { name: 'LEGAL REVIEW', color: 'var(--accent2)', items: ['News Signals Feed','Patent Data Feed'] },
+  { name: 'DATA PROTECTION', color: '#a78bfa', items: ['Regulatory Filing','Trade Activity DS'] },
+  { name: 'FINANCE APPROVAL', color: 'var(--amber)', items: ['Market Intel API','Pricing Benchmark'] },
+  { name: 'PROVISIONING', color: 'var(--green)', items: ['Entity Resolution','Social Graph'] },
+  { name: 'COMPLETED', color: 'var(--green)', items: ['Customer Master v3','Credit Risk DS v2','Address Data','Compliance Watchlist v4','Industry Class.'] },
+];
+
+function renderOnboarding() {
+  document.getElementById('pipelineView').innerHTML = stages.map(s => `
+    <div class="pipeline-stage">
+      <div class="stage-name">${s.name}</div>
+      <div class="stage-count" style="color:${s.color}">${s.items.length}</div>
+      <div class="stage-items">
+        ${s.items.map(item => `<div class="stage-item" style="border-left-color:${s.color};font-size:10px;">${item}</div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  const tl = [
+    { title: 'ESG Scores v2 — Legal review initiated', meta: 'Today · Legal · Priya M.', color: 'var(--accent2)' },
+    { title: 'Dun & Bradstreet Customer Master v3 — Provisioning complete', meta: 'Yesterday · Procurement · Sarah K.', color: 'var(--green)' },
+    { title: 'Nielsen Social Graph — Finance approval pending', meta: '2 days ago · Finance · Hans B.', color: 'var(--amber)' },
+    { title: 'Bloomberg News Signals — Data Protection review started', meta: '3 days ago · Data Protection · Fatima A.', color: 'var(--accent)' },
+    { title: 'Refinitiv Trade Activity Dataset — Contract uploaded', meta: '4 days ago · Procurement · James L.', color: 'var(--muted)' },
+    { title: 'Moody\'s Credit Risk DS v2 — Onboarding request raised', meta: '5 days ago · Finance · Hans B.', color: 'var(--muted)' },
+    { title: 'S&P Global ESG Scores — Provisioning approved', meta: '6 days ago · All Depts · Sarah K.', color: 'var(--green)' },
+  ];
+
+  document.getElementById('onboardingTimeline').innerHTML = tl.map((t, i) => `
+    <div class="timeline-item">
+      <div class="tl-dot-wrap">
+        <div class="tl-dot" style="background:${t.color}"></div>
+        ${i < tl.length-1 ? '<div class="tl-line"></div>' : ''}
+      </div>
+      <div class="tl-content">
+        <div class="tl-title">${t.title}</div>
+        <div class="tl-meta">${t.meta}</div>
+      </div>
+    </div>
+  `).join('');
+
+  renderCycleChart();
+}
+
+// =================== TEMPLATES ===================
+const templates = [
+  { icon: '📋', name: 'Contract Renewal Checklist', desc: 'Step-by-step renewal workflow covering legal, finance, and procurement sign-off stages.', content: ['1. Identify renewal date (90 days ahead)','2. Notify legal team for contract review','3. Confirm data protection compliance','4. Finance budget approval','5. Supplier negotiation & rate confirmation','6. Upload signed contract to data registry','7. Update RAG status to GREEN'] },
+  { icon: '🚀', name: 'Supplier Onboarding Workflow', desc: 'End-to-end process for onboarding a new third-party data supplier from request to provisioning.', content: ['1. Raise data product request via intake form','2. Data Protection Officer (DPO) review','3. Legal contract review & red-line','4. Finance cost-benefit sign-off','5. IT provisioning & access setup','6. User acceptance testing (UAT)','7. Go-live & monitoring'] },
+  { icon: '✅', name: 'Action Item Tracker', desc: 'Structured template for tracking cross-functional follow-up items with owners and deadlines.', content: ['Fields: Action ID, Description, Owner, Due Date, Priority (RAG), Status','Escalation rule: Amber >5 days overdue → Red','Weekly review cadence recommended','Shared with: Procurement, Legal, Finance, BU leads'] },
+  { icon: '📊', name: 'Status Report Format', desc: 'Weekly data product status report template for senior stakeholder communication.', content: ['Section 1: Executive Summary (3 bullets)','Section 2: Contract renewals this week','Section 3: Onboarding pipeline status','Section 4: Compliance & governance alerts','Section 5: Upcoming deadlines (30-day view)','Section 6: Action items & owners'] },
+  { icon: '📝', name: 'Decision Log', desc: 'Governance forum decision record for data acquisition and renewal decisions.', content: ['Fields: Decision ID, Date, Topic, Decision Made, Rationale, Stakeholders Present, Next Review Date','Used in: Quarterly IDM governance forums','Archive: Retained for 3 years per data policy'] },
+  { icon: '🕐', name: 'Time-Booking Tracker', desc: 'Monthly time allocation tracker for IDM CoE team activities across data product lifecycle stages.', content: ['Categories: Contract Management, Onboarding, Governance, Supplier Comms, Reporting','Format: Weekly hours per category per FTE','Reporting: Monthly to IDM Director','Linked to: Finance cost centre allocation'] },
+];
+
+function renderTemplates() {
+  document.getElementById('templateGrid').innerHTML = templates.map((t, i) => `
+    <div class="template-card" onclick="showTemplate(${i})">
+      <div class="template-icon">${t.icon}</div>
+      <div class="template-name">${t.name}</div>
+      <div class="template-desc">${t.desc}</div>
+    </div>
+  `).join('');
+}
+
+function showTemplate(i) {
+  const t = templates[i];
+  document.getElementById('templateDetailTitle').textContent = t.icon + '  ' + t.name;
+  document.getElementById('templateDetailBody').innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">${t.desc}</div>
+    ${t.content.map(line => `
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">
+        <span style="color:var(--accent2);font-family:var(--mono);font-size:10px;margin-top:1px;">▸</span>
+        <span style="font-size:12px;color:var(--text)">${line}</span>
+      </div>
+    `).join('')}
+  `;
+  document.getElementById('templateDetail').style.display = 'block';
+}
+
+// =================== CHARTS ===================
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#1e2d45';
+Chart.defaults.font.family = 'IBM Plex Mono';
+Chart.defaults.font.size = 10;
+
+// RENEWAL TIMELINE
+const months = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+new Chart(document.getElementById('renewalChart'), {
+  type: 'bar',
+  data: {
+    labels: months,
+    datasets: [
+      { label: 'Renewals Due', data: [3,5,2,8,4,6,3,7,5,4,3,4], backgroundColor: 'rgba(0,120,212,0.5)', borderColor: '#0078d4', borderWidth: 1, borderRadius: 3 },
+      { label: 'Finance Approved', data: [3,4,2,6,3,5,3,5,4,3,2,3], backgroundColor: 'rgba(0,214,143,0.3)', borderColor: 'var(--green)', borderWidth: 1, borderRadius: 3 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: true,
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 16 } } },
+    scales: { x: { grid: { color: '#1e2d45' } }, y: { grid: { color: '#1e2d45' }, ticks: { stepSize: 2 } } }
+  }
+});
+
+// RAG DONUT
+new Chart(document.getElementById('ragDonut'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Green','Amber','Red'],
+    datasets: [{ data: [38,11,5], backgroundColor: ['rgba(0,214,143,0.8)','rgba(245,166,35,0.8)','rgba(255,77,106,0.8)'], borderWidth: 0, hoverOffset: 4 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '70%',
+    plugins: { legend: { display: false } }
+  }
+});
+
+// BU BREAKDOWN
+new Chart(document.getElementById('buChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Finance & Risk','Sales & Mktg','Procurement','Corp Strategy'],
+    datasets: [{ data: [18,14,12,10], backgroundColor: ['rgba(0,198,255,0.6)','rgba(167,139,250,0.6)','rgba(0,214,143,0.6)','rgba(245,166,35,0.6)'], borderRadius: 3, borderWidth: 0 }]
+  },
+  options: {
+    indexAxis: 'y', responsive: true,
+    plugins: { legend: { display: false } },
+    scales: { x: { grid: { color: '#1e2d45' } }, y: { grid: { display: false } } }
+  }
+});
+
+// SPEND CHART
+new Chart(document.getElementById('spendChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Market Data','Credit & Risk','Compliance','ESG','People Data','Geo & Address'],
+    datasets: [{ data: [820,640,420,380,310,210], backgroundColor: 'rgba(0,120,212,0.5)', borderColor: '#0078d4', borderWidth: 1, borderRadius: 3 }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: { x: { grid: { display: false }, ticks: { maxRotation: 35, font: { size: 9 } } }, y: { grid: { color: '#1e2d45' } } }
+  }
+});
+
+// COMPLIANCE CHART
+function renderGovCharts() {
+  new Chart(document.getElementById('complianceChart'), {
+    type: 'line',
+    data: {
+      labels: ['Oct','Nov','Dec','Jan','Feb','Mar'],
+      datasets: [
+        { label: 'Data Protection', data: [62,68,74,79,83,84], borderColor: '#a78bfa', tension: 0.4, fill: false, pointRadius: 3 },
+        { label: 'Legal', data: [70,75,79,83,87,89], borderColor: 'var(--accent2)', tension: 0.4, fill: false, pointRadius: 3 },
+        { label: 'Finance', data: [55,58,62,66,69,71], borderColor: 'var(--amber)', tension: 0.4, fill: false, pointRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
+      scales: { x: { grid: { color: '#1e2d45' } }, y: { grid: { color: '#1e2d45' }, min: 50, max: 100 } }
+    }
+  });
+}
+
+// CYCLE TIME CHART
+function renderCycleChart() {
+  setTimeout(() => {
+    const ctx = document.getElementById('cycleChart');
+    if (!ctx) return;
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['Oct','Nov','Dec','Jan','Feb','Mar'],
+        datasets: [{ label: 'Avg Cycle Days', data: [17.3,16.1,14.8,13.5,12.2,11.2], borderColor: 'var(--green)', backgroundColor: 'rgba(0,214,143,0.08)', tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: 'var(--green)' }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { color: '#1e2d45' } }, y: { grid: { color: '#1e2d45' }, min: 8, max: 20 } }
+      }
+    });
+  }, 100);
+}
+
+// OWNER CHART
+let ownerChartInstance = null;
+function renderOwnerChart() {
+  const ctx = document.getElementById('ownerChart');
+  if (!ctx) return;
+  if (ownerChartInstance) ownerChartInstance.destroy();
+  ownerChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: owners,
+      datasets: [
+        { label: 'Done', data: [3,2,4,1,2], backgroundColor: 'rgba(0,214,143,0.6)', borderRadius: 3 },
+        { label: 'Pending', data: [2,2,1,2,1], backgroundColor: 'rgba(255,77,106,0.5)', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
+      scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, grid: { color: '#1e2d45' } } }
+    }
+  });
+}
+
+// Intercept tab clicks to init charts
+document.querySelectorAll('.tab').forEach((tab, i) => {
+  const names = ['overview','contracts','onboarding','governance','actions','templates'];
+  tab.addEventListener('click', () => {
+    if (names[i] === 'governance') setTimeout(renderGovCharts, 100);
+  });
+});
+</script>
+</body>
+</html>
